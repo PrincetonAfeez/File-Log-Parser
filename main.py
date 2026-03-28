@@ -5,9 +5,10 @@ from parser import LogParser
 def main():
     if len(sys.argv) < 2:
         print("Usage: python main.py <logfile>")
-        return
+        sys.exit(1)
     
-    parser = LogParser(sys.argv[1])
+    file_path = sys.argv[1]
+    parser = LogParser(file_path)
     parser.run()
 
 if __name__ == "__main__":
