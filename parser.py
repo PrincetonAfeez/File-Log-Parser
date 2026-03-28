@@ -11,6 +11,8 @@ from rich.table import Table
 import os
 from rich.progress import track
 import csv
+import yaml
+
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -37,6 +39,8 @@ class LogParser:
         self.corrupted_lines = 0
         self.ip_404_counts = Counter()
         self.ignored_lines = 0
+        with open("config.yaml", "r") as f:
+            self.config = yaml.safe_load(f)
 
    def run(self, threshold: int = 50):
         self.console.print(f"[info]Starting Analysis on {self.filepath}...[/info]")
@@ -53,8 +57,7 @@ class LogParser:
 
 
     def is_noise(self, entry: LogEntry) -> bool:
-        """Filter out static assets or health checks."""
-        return entry.path.endswith(('.css', '.js', '.png', '.ico'))
+        return any(entry.path.endswith(ext) for ext in self.config['parser']['ignore_extensions'])
 
     def parse_line(self, line: str):
         match = LOG_PATTERN.search(line)
