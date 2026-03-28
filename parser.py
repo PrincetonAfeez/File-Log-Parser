@@ -14,8 +14,23 @@ class LogParser:
         print(f"--- Processing: {self.filepath} ---")
         # Logic will be added in next commits
 
+    def run(self):
+        try:
+            with open(self.filepath, 'r') as file:
+                for line in file:
+                    self.parse_line(line.strip())
+            self.print_summary()
+        except FileNotFoundError:
+            print(f"Error: File '{self.filepath}' not found.")
 
-#feat: implement safe file reading logic
+    def parse_line(self, line: str):
+        """Placeholder for regex logic."""
+        pass
+
+    def print_summary(self):
+        """Placeholder for reporting logic."""
+        print("Processing complete.")
+
 
 #feat: add initial regex for IP and status code extraction
 
