@@ -106,6 +106,22 @@ class LogParser:
         
         if not found_threats:
             self.console.print("[success]No suspicious activity detected.[/success]")
+
+    def export_data(self, format_type: str):
+        report = {
+            "summary": dict(self.status_counts),
+            "top_ips": dict(self.ip_counts.most_common(5)),
+            "security_alerts": [ip for ip, count in self.ip_404_counts.items() if count > 50],
+            "integrity_metrics": {
+                "corrupted": self.corrupted_lines,
+                "ignored": self.ignored_lines
+            }
+        }
+        
+        if format_type == 'json':
+            with open("report.json", "w") as f:
+                json.dump(report, f, indent=4)
+            self.console.print("[success]Report exported to report.json[/success]")
             
     def print_summary(self):
         table = Table(title="HTTP Status Distribution", show_header=True, header_style="bold magenta")
