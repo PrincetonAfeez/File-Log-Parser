@@ -1,192 +1,169 @@
 # parser.py
-import re
-from collections import Counter
-from typing import Dict, List, Any
-from exceptions import InvalidLogFormatError
-import ipaddress
-from models import LogEntry
-from rich.console import Console
-from rich.theme import Theme
-from rich.table import Table
-import os
-from rich.progress import track
-import csv
-import yaml
+"""High-level orchestration: stream a log file and coordinate analysis + reporting."""
+
+from __future__ import annotations
+
 import logging
-from datetime import datetime
-import asyncio
+from collections import Counter
+from typing import Any
+
 import aiofiles
 
+from log_processing import AccessLogLineMatcher, LogEntryBuilder, NoisePathFilter
+from models import LogEntry
+from reporting import ReportExporter, SecurityAuditor, SummaryReporter, make_console
+from settings import ParserSettings
+
 logging.basicConfig(
-    filename='parser.log',
+    filename="parser.log",
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
-# Enterprise-grade regex with named groups
-LOG_PATTERN = re.compile(
-    r'(?P<ip>\d{1,3}(?:\.\d{1,3}){3})'       # Matches IP
-    r'.*?\[(?P<timestamp>.*?)\] '            # Matches Timestamp
-    r'"(?P<method>\w+) (?P<path>.*?) HTTP.*?" ' # Matches Method & Path
-    r'(?P<status>\d{3})'                     # Matches Status Code
-)
+# Re-export for tests and callers that need the raw pattern.
+LOG_PATTERN = AccessLogLineMatcher.PATTERN
 
-# Custom theme for enterprise branding
-custom_theme = Theme({
-    "info": "cyan",
-    "warning": "yellow",
-    "danger": "bold red",
-    "success": "bold green"
-})
 
 class LogParser:
-    def __init__(self, filepath: str):
-        self.console = Console(theme=custom_theme)
+    """
+    End-to-end access log analysis for a single file path.
+
+    Wires together line matching, validation, noise filtering, in-memory counters,
+    and pluggable reporting. Intended to be driven once per file from the CLI.
+    """
+
+    def __init__(self, filepath: str, config_path: str = "config.yaml"):
         self.filepath = filepath
-        self.status_counts = Counter()
-        self.ip_counts = Counter()
+        self.settings = ParserSettings.load(config_path)
+        self.console = make_console()
+
+        self._matcher = AccessLogLineMatcher()
+        self._entry_builder = LogEntryBuilder()
+        self._noise = NoisePathFilter(self.settings.ignore_extensions)
+        self._summary = SummaryReporter()
+        self._auditor = SecurityAuditor()
+        self._exporter = ReportExporter(self.console)
+
+        self.status_counts: Counter[str] = Counter()
+        self.ip_counts: Counter[str] = Counter()
         self.corrupted_lines = 0
-        self.ip_404_counts = Counter()
+        self.ip_404_counts: Counter[str] = Counter()
         self.ignored_lines = 0
-        with open("config.yaml", "r") as f:
-            self.config = yaml.safe_load(f)
 
-async def run(self, threshold: int = 50):
-    self.console.print("[info]Initiating Async Stream Analysis...[/info]")
-    
-    async with aiofiles.open(self.filepath, mode='r') as f:
-        async for line in f:
-            # We can now process lines in a non-blocking fashion
-            self.parse_line(line.strip())
-            
-    self.print_summary()
-    self.check_security(threshold)
+    @property
+    def config(self) -> dict[str, Any]:
+        """Shallow copy of YAML root; same shape older code expected on ``parser.config``."""
+        return self.settings.as_dict()
 
+    def _security_threshold(self) -> int:
+        """404 count above which an IP is treated as noteworthy in exports."""
+        return self.settings.security_threshold
 
-    def is_noise(self, entry: LogEntry) -> bool:
-        return any(entry.path.endswith(ext) for ext in self.config['parser']['ignore_extensions'])
+    async def run(self, threshold: int = 50) -> None:
+        """
+        Read the log file asynchronously, parse each non-empty line, then print results.
 
-    def parse_line(self, line: str):
-        match = LOG_PATTERN.search(line)
-        if match:
-            group = match.groupdict()
-            try:
-                # Validate IP first
-                ip_obj = ipaddress.ip_address(group['ip'])
-                
-                # Create structured entry
-                entry = LogEntry(
-                    ip=str(ip_obj),
-                    timestamp=group['timestamp'],
-                    method=group['method'],
-                    path=group['path'],
-                    status=int(group['status'])
-                )
-                
-                if self.is_noise(entry):
-                    self.ignored_lines += 1
-                    return
-                # Update counters using entry attributes
-                self.status_counts[str(entry.status)] += 1
-                self.ip_counts[entry.ip] += 1
-                if entry.status == 404:
-                    self.ip_404_counts[entry.ip] += 1
-                    
-            except (ValueError, KeyError):
-                self.corrupted_lines += 1
-                logging.warning(f"Malformed line detected: {line[:50]}...")
+        ``threshold`` is forwarded to the summary and security audit sections for
+        404- and hit-based heuristics.
+        """
+        self.console.print("[info]Initiating Async Stream Analysis...[/info]")
+        await self._ingest_file()
+        self.print_summary(threshold=threshold)
+        self.check_security(threshold)
 
-            try:
-                # Example format: 28/Mar/2024:10:01:05
-                datetime.strptime(group['timestamp'], '%d/%b/%Y:%H:%M:%S')
-            except ValueError:
-                self.corrupted_lines += 1
-                logging.error(f"Invalid timestamp format: {group['timestamp']}")
-                return
+    async def _ingest_file(self) -> None:
+        """Stream ``self.filepath`` line by line and feed each line to :meth:`parse_line`."""
+        async with aiofiles.open(self.filepath, mode="r", encoding="utf-8") as f:
+            async for line in f:
+                self.parse_line(line.strip())
 
-        data = match.groupdict()
-        self.status_counts[data['status']] += 1
-        self.ip_counts[data['ip']] += 1
-        if data['status'] == '404':
-            self.ip_404_counts[data['ip']] += 1
-        try:
-            ip_obj = ipaddress.ip_address(data['ip'])
-            self.ip_counts[str(ip_obj)] += 1
-            self.status_counts[data['status']] += 1
-        except ValueError:
+    def parse_line(self, line: str) -> None:
+        """
+        Parse one log line: update counters or increment corruption / ignore tallies.
+
+        Empty lines are skipped. Lines that fail regex, validation, or are classified
+        as noise update the appropriate metric and return without raising.
+        """
+        if not line:
+            return
+
+        match = self._matcher.search(line)
+        if not match:
+            self._record_corrupted(line, "Line did not match log pattern")
+            return
+
+        groups = match.groupdict()
+        entry, build_error = self._entry_builder.build(groups)
+        if entry is None:
+            self._log_build_failure(line, groups, build_error)
             self.corrupted_lines += 1
+            return
 
-    def check_security(self, threshold: int):
-        self.console.print("\n[bold]-- Security Audit --[/bold]")
-        found_threats = False
-        for ip, count in self.ip_404_counts.items():
-            if count > threshold:
-                self.console.print(f"[danger]ALERT:[/danger] {ip} exceeded 404 threshold with {count} errors!")
-                found_threats = True
-        
-        if not found_threats:
-            self.console.print("[success]No suspicious activity detected.[/success]")
+        if self._noise.is_noise(entry):
+            self.ignored_lines += 1
+            return
 
-    def export_data(self, format_type: str):
-        report = {
-            "summary": dict(self.status_counts),
-            "top_ips": dict(self.ip_counts.most_common(5)),
-            "security_alerts": [ip for ip, count in self.ip_404_counts.items() if count > 50],
-            "integrity_metrics": {
-                "corrupted": self.corrupted_lines,
-                "ignored": self.ignored_lines
-            }
-        }
-        
-        if format_type == 'json':
-            with open("report.json", "w") as f:
-                json.dump(report, f, indent=4)
-            self.console.print("[success]Report exported to report.json[/success]")
-        
-        if format_type == 'csv':
-            with open("ip_report.csv", "w", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(["IP Address", "Total Hits", "404 Errors"])
-                for ip, hits in self.ip_counts.items():
-                    writer.writerow([ip, hits, self.ip_404_counts.get(ip, 0)])
-            self.console.print("[success]Report exported to ip_report.csv[/success]")
-            filename = f"{output_name}.{format_type}"
+        self._apply_entry(entry)
 
-    def print_summary(self):
-        table = Table(title="HTTP Status Distribution", show_header=True, header_style="bold magenta")
-        table.add_column("Status Code", style="dim")
-        table.add_column("Occurrences", justify="right")
+    def _record_corrupted(self, line: str, reason: str) -> None:
+        """Increment the corrupted counter and log a short preview for debugging."""
+        self.corrupted_lines += 1
+        logging.warning("%s: %r", reason, line[:80])
 
-        for code, count in self.status_counts.items():
-            table.add_row(code, str(count))
+    def _log_build_failure(
+        self, line: str, groups: dict[str, str], build_error: str | None
+    ) -> None:
+        """Emit the same log levels as legacy parsing for each validation failure."""
+        if build_error == "invalid_ip":
+            logging.warning("Invalid IP in line: %s...", line[:50])
+        elif build_error == "invalid_timestamp":
+            logging.error("Invalid timestamp format: %r", groups.get("timestamp", ""))
+        # invalid_status: match prior behavior (count corrupted, no extra log)
 
-        self.console.print(table)
-        print("\n--- Log Analysis Report ---")
-        print(f"HTTP 200: {self.status_counts['200']}")
-        print(f"HTTP 404: {self.status_counts['404']}")
-        print(f"HTTP 500: {self.status_counts['500']}")
-        
-        print("\nTop 3 IP Addresses:")
-        for ip, count in self.ip_counts.most_common(3):
-            print(f"{ip}: {count} hits")
-            
-        # Security Alert Logic
-        for ip, count in self.ip_counts.items():
-            # Basic check: if an IP has > 50 hits, check if many are 404s
-            # (Refining this logic will be a Phase 2 commit)
-            if count > 50:
-                print(f"!!! SECURITY ALERT: Potential Bot detected from {ip} !!!")
+    def _apply_entry(self, entry: LogEntry) -> None:
+        """Merge a validated, non-noise entry into status and IP counters."""
+        self.status_counts[str(entry.status)] += 1
+        self.ip_counts[entry.ip] += 1
+        if entry.status == 404:
+            self.ip_404_counts[entry.ip] += 1
 
-        print("\n--- Integrity Report ---")
-        print(f"Lines Processed: {sum(self.status_counts.values()) + self.corrupted_lines}")
-        print(f"Malformed/Corrupted Lines: {self.corrupted_lines}")
-        
-        print("\n--- Security Alerts ---")
-        for ip, count in self.ip_404_counts.items():
-            if count > 50:
-                print(f"[ALERT] {ip} flagged for suspicious activity ({count} 404s)")
-        
-    
+    def check_security(self, threshold: int) -> None:
+        """Print Rich-formatted alerts for IPs exceeding ``threshold`` 404 responses."""
+        self._auditor.print_audit(self.console, self.ip_404_counts, threshold)
 
+    def export_data(self, format_type: str, output_name: str = "report") -> None:
+        """
+        Write JSON or CSV under ``{output_name}.(json|csv)`` using current counters.
 
-    
+        Security alert lists inside JSON use the configured default threshold from YAML.
+        """
+        alert_threshold = self._security_threshold()
+        payload = self._exporter.build_payload(
+            status_counts=self.status_counts,
+            ip_counts=self.ip_counts,
+            ip_404_counts=self.ip_404_counts,
+            corrupted_lines=self.corrupted_lines,
+            ignored_lines=self.ignored_lines,
+            alert_threshold=alert_threshold,
+        )
+        self._exporter.export(
+            format_type,
+            output_name,
+            payload=payload,
+            ip_counts=self.ip_counts,
+            ip_404_counts=self.ip_404_counts,
+        )
+
+    def print_summary(self, threshold: int | None = None) -> None:
+        """Print tables and text sections; ``threshold`` defaults to config when omitted."""
+        if threshold is None:
+            threshold = self._security_threshold()
+        self._summary.print_full_summary(
+            self.console,
+            status_counts=self.status_counts,
+            ip_counts=self.ip_counts,
+            ip_404_counts=self.ip_404_counts,
+            corrupted_lines=self.corrupted_lines,
+            ignored_lines=self.ignored_lines,
+            threshold=threshold,
+        )

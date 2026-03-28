@@ -1,4 +1,7 @@
 # exceptions.py
+"""Typed errors for log parsing I/O and format failures (optional use by callers)."""
+
+
 class LogParserError(Exception):
     """Base class for all parser exceptions."""
     pass

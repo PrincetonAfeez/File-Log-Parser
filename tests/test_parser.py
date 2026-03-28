@@ -21,19 +21,22 @@ def test_ip_validation(tmp_path):
     p.write_text('999.999.999.999 - - [28/Mar/2024:10:01:05] "GET / HTTP/1.1" 200 512')
     
     parser = LogParser(str(p))
-    parser.parse_line(p.read_text())
+    for line in p.read_text().splitlines():
+        parser.parse_line(line)
     assert parser.corrupted_lines == 1
 
 def test_security_alert_logic():
     parser = LogParser("dummy.log")
-    # Simulate 51 hits of 404 from one IP
+    ts = "28/Mar/2024:10:01:05"
     for _ in range(51):
-        parser.parse_line('1.2.3.4 - - [date] "GET /bad HTTP/1.1" 404 123')
-    
-    assert parser.ip_404_counts['1.2.3.4'] == 
+        parser.parse_line(
+            f'1.2.3.4 - - [{ts}] "GET /bad HTTP/1.1" 404 123'
+        )
+
+    assert parser.ip_404_counts['1.2.3.4'] == 51
 
 def test_noise_filtering():
     parser = LogParser("dummy.log")
-    line = '192.168.1.1 - - [date] "GET /style.css HTTP/1.1" 200 512'
+    line = '192.168.1.1 - - [28/Mar/2024:10:01:05] "GET /style.css HTTP/1.1" 200 512'
     parser.parse_line(line)
     assert parser.ignored_lines == 1
