@@ -30,4 +30,10 @@ def test_security_alert_logic():
     for _ in range(51):
         parser.parse_line('1.2.3.4 - - [date] "GET /bad HTTP/1.1" 404 123')
     
-    assert parser.ip_404_counts['1.2.3.4'] == 51
+    assert parser.ip_404_counts['1.2.3.4'] == 
+
+def test_noise_filtering():
+    parser = LogParser("dummy.log")
+    line = '192.168.1.1 - - [date] "GET /style.css HTTP/1.1" 200 512'
+    parser.parse_line(line)
+    assert parser.ignored_lines == 1
