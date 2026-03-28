@@ -18,11 +18,6 @@ class LogParser:
         self.ip_counts = Counter()
         
     def run(self):
-        """Execution flow for the parser."""
-        print(f"--- Processing: {self.filepath} ---")
-        # Logic will be added in next commits
-
-    def run(self):
         try:
             with open(self.filepath, 'r') as file:
                 for line in file:
@@ -32,8 +27,14 @@ class LogParser:
             print(f"Error: File '{self.filepath}' not found.")
 
     def parse_line(self, line: str):
-        """Placeholder for regex logic."""
-        pass
+        match = LOG_PATTERN.search(line)
+        if match:
+            data = match.groupdict()
+            self.status_counts[data['status']] += 1
+            self.ip_counts[data['ip']] += 1
+        else:
+            # We will handle "Data Cleansing" for failed matches in Phase 2
+            pass
 
     def print_summary(self):
         """Placeholder for reporting logic."""
