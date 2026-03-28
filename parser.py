@@ -13,6 +13,7 @@ from rich.progress import track
 import csv
 import yaml
 import logging
+from datetime import datetime
 
 logging.basicConfig(
     filename='parser.log',
@@ -94,7 +95,15 @@ class LogParser:
             except (ValueError, KeyError):
                 self.corrupted_lines += 1
                 logging.warning(f"Malformed line detected: {line[:50]}...")
-        
+
+            try:
+                # Example format: 28/Mar/2024:10:01:05
+                datetime.strptime(group['timestamp'], '%d/%b/%Y:%H:%M:%S')
+            except ValueError:
+                self.corrupted_lines += 1
+                logging.error(f"Invalid timestamp format: {group['timestamp']}")
+                return
+
         data = match.groupdict()
         self.status_counts[data['status']] += 1
         self.ip_counts[data['ip']] += 1
