@@ -1,26 +1,31 @@
+# reporting.py
 """Terminal summaries and file exports built from aggregated log metrics."""
 
+# Enable postponed evaluation of annotations for modern type hinting support.
 from __future__ import annotations
 
+# Import standard libraries for data persistence (CSV/JSON) and type management.
 import csv
 import json
 from collections import Counter
 from typing import Any
 
+# Import Rich library components to create professional, high-fidelity terminal interfaces.
 from rich.console import Console
 from rich.table import Table
 from rich.theme import Theme
 
+# Define a centralized color palette to ensure consistent UI branding across the CLI tool.
 _CUSTOM_THEME = Theme({
-    "info": "cyan",
-    "warning": "yellow",
-    "danger": "bold red",
-    "success": "bold green",
+    "info": "cyan",        # Used for general status updates.
+    "warning": "yellow",   # Used for non-critical integrity issues.
+    "danger": "bold red",  # Used for high-priority security alerts.
+    "success": "bold green", # Used for completed operations and clean audits.
 })
 
 
 def make_console() -> Console:
-    """Create a Rich console using the project's standard color theme."""
+    """Factory function to initialize a Rich console with the project's custom theme."""
     return Console(theme=_CUSTOM_THEME)
 
 
@@ -32,15 +37,20 @@ class SecurityAuditor:
     """
 
     def print_audit(self, console: Console, ip_404_counts: Counter[str], threshold: int) -> None:
-        """Emit Rich-styled alerts for any IP above ``threshold`` 404 count."""
+        """Analyze 404 frequency and emit high-visibility Rich-styled terminal alerts."""
         console.print("\n[bold]-- Security Audit --[/bold]")
-        found = False
+        found = False  # Track if any threats were detected to handle the 'clean' state.
+        
+        # Iterate through the counter to identify IPs exceeding the security threshold.
         for ip, count in ip_404_counts.items():
             if count > threshold:
+                # Trigger a 'danger' styled alert for IPs flagged by the heuristic.
                 console.print(
                     f"[danger]ALERT:[/danger] {ip} exceeded 404 threshold with {count} errors!"
                 )
                 found = True
+        
+        # If no IPs hit the threshold, provide positive reinforcement to the operator.
         if not found:
             console.print("[success]No suspicious activity detected.[/success]")
 
@@ -64,42 +74,45 @@ class SummaryReporter:
         ignored_lines: int,
         threshold: int,
     ) -> None:
-        """Print the full post-run summary: table, highlights, integrity, alerts."""
-        self._print_status_table(console, status_counts)
-        self._print_http_highlights(status_counts)
-        self._print_top_ips(ip_counts)
-        self._print_bot_heuristics(ip_counts, threshold)
-        self._print_integrity(status_counts, corrupted_lines, ignored_lines)
-        self._print_404_alerts(ip_404_counts, threshold)
+        """Orchestrate the sequential printing of all summary sections after a run."""
+        self._print_status_table(console, status_counts)        # Render the visual histogram.
+        self._print_http_highlights(status_counts)             # Print specific code counts.
+        self._print_top_ips(ip_counts)                         # Identify the most active clients.
+        self._print_bot_heuristics(ip_counts, threshold)       # Flag high-volume traffic.
+        self._print_integrity(status_counts, corrupted_lines, ignored_lines) # Show data quality.
+        self._print_404_alerts(ip_404_counts, threshold)       # Output text-based security logs.
 
     def _print_status_table(self, console: Console, status_counts: Counter[str]) -> None:
-        """Draw the HTTP status code histogram using Rich."""
+        """Construct and render a formatted Rich table showing the HTTP status distribution."""
         table = Table(
             title="HTTP Status Distribution",
             show_header=True,
             header_style="bold magenta",
         )
-        table.add_column("Status Code", style="dim")
-        table.add_column("Occurrences", justify="right")
+        table.add_column("Status Code", style="dim")  # Column for the 3-digit HTTP code.
+        table.add_column("Occurrences", justify="right") # Column for the hit frequency.
+        
+        # Sort status codes numerically for a clean, logical display.
         for code, count in sorted(status_counts.items(), key=lambda x: int(x[0])):
             table.add_row(code, str(count))
+        
         console.print(table)
 
     def _print_http_highlights(self, status_counts: Counter[str]) -> None:
-        """Print fixed code lines (200/404/500) for quick scanning."""
+        """Extract and print high-level metrics for the most critical HTTP codes."""
         print("\n--- Log Analysis Report ---")
-        print(f"HTTP 200: {status_counts.get('200', 0)}")
-        print(f"HTTP 404: {status_counts.get('404', 0)}")
-        print(f"HTTP 500: {status_counts.get('500', 0)}")
+        print(f"HTTP 200: {status_counts.get('200', 0)}") # Successes.
+        print(f"HTTP 404: {status_counts.get('404', 0)}") # Client Errors/Missing.
+        print(f"HTTP 500: {status_counts.get('500', 0)}") # Server Errors.
 
     def _print_top_ips(self, ip_counts: Counter[str], limit: int = 3) -> None:
-        """List the busiest IPs by total request count (``limit`` rows)."""
+        """Identify and list the IPs responsible for the highest volume of traffic."""
         print(f"\nTop {limit} IP Addresses:")
         for ip, count in ip_counts.most_common(limit):
             print(f"{ip}: {count} hits")
 
     def _print_bot_heuristics(self, ip_counts: Counter[str], threshold: int) -> None:
-        """Flag IPs with very high total hit counts (coarse bot/scanner hint)."""
+        """Evaluate raw hit volume per IP to identify potential non-human traffic."""
         for ip, count in ip_counts.items():
             if count > threshold:
                 print(f"!!! SECURITY ALERT: Potential Bot detected from {ip} !!!")
@@ -110,15 +123,16 @@ class SummaryReporter:
         corrupted_lines: int,
         ignored_lines: int,
     ) -> None:
-        """Show how many lines matched, failed parsing, or were ignored as noise."""
-        matched = sum(status_counts.values())
+        """Calculate and display data quality metrics to ensure the audit is reliable."""
+        matched = sum(status_counts.values()) # Total lines that passed all guards.
         print("\n--- Integrity Report ---")
+        # Sum all categories to show the true total line count of the source file.
         print(f"Lines Processed: {matched + corrupted_lines + ignored_lines}")
-        print(f"Malformed/Corrupted Lines: {corrupted_lines}")
-        print(f"Ignored (noise): {ignored_lines}")
+        print(f"Malformed/Corrupted Lines: {corrupted_lines}") # Lines failing RegEx/Validation.
+        print(f"Ignored (noise): {ignored_lines}") # Static assets filtered out.
 
     def _print_404_alerts(self, ip_404_counts: Counter[str], threshold: int) -> None:
-        """Repeat 404-focused alerts in plain text for log capture / piping."""
+        """Provide a plain-text section for security alerts, ideal for CLI pipe redirection."""
         print("\n--- Security Alerts ---")
         for ip, count in ip_404_counts.items():
             if count > threshold:
@@ -133,6 +147,7 @@ class ReportExporter:
     """
 
     def __init__(self, console: Console):
+        """Initialize the exporter with a reference to the active Rich console."""
         self._console = console
 
     def build_payload(
@@ -145,11 +160,12 @@ class ReportExporter:
         ignored_lines: int,
         alert_threshold: int,
     ) -> dict[str, Any]:
-        """Assemble the dictionary shared by JSON export (and future formats)."""
+        """Convert Counter objects into a standard Python dictionary for serialization."""
         return {
-            "summary": dict(status_counts),
-            "top_ips": dict(ip_counts.most_common(5)),
+            "summary": dict(status_counts), # Map of status codes to frequencies.
+            "top_ips": dict(ip_counts.most_common(5)), # Limit IP breakdown to top 5.
             "security_alerts": [
+                # Build a list of IPs that triggered the security heuristic.
                 ip for ip, count in ip_404_counts.items() if count > alert_threshold
             ],
             "integrity_metrics": {
@@ -167,24 +183,20 @@ class ReportExporter:
         ip_counts: Counter[str],
         ip_404_counts: Counter[str],
     ) -> None:
-        """
-        Write aggregates to disk.
-
-        JSON uses ``payload`` only. CSV needs full ``ip_counts`` / ``ip_404_counts``
-        so every IP appears, not just the ``top_ips`` slice in the payload.
-        """
+        """Determine the export format and trigger the appropriate file-writing method."""
         if format_type == "json":
             self._write_json(output_name, payload)
         elif format_type == "csv":
             self._write_csv(output_name, ip_counts, ip_404_counts)
         else:
+            # Raise an error if the user provides an unsupported CLI flag.
             raise ValueError(f"Unsupported export format: {format_type!r}")
 
     def _write_json(self, output_name: str, payload: dict[str, Any]) -> None:
-        """Serialize ``payload`` to indented UTF-8 JSON next to the working directory."""
+        """Serialize the processed data into a formatted JSON file on disk."""
         path = f"{output_name}.json"
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=4)
+            json.dump(payload, f, indent=4) # Use 4-space indentation for human readability.
         self._console.print(f"[success]Report exported to {path}[/success]")
 
     def _write_csv(
@@ -193,11 +205,13 @@ class ReportExporter:
         ip_counts: Counter[str],
         ip_404_counts: Counter[str],
     ) -> None:
-        """Write UTF-8 CSV with columns IP / total hits / 404 count for every known IP."""
+        """Serialize IP-specific metrics into a CSV file for spreadsheet analysis."""
         path = f"{output_name}.csv"
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
+            # Define header row for clarity in Excel/Google Sheets.
             writer.writerow(["IP Address", "Total Hits", "404 Errors"])
+            # Iterate through all observed IPs to provide a comprehensive hit list.
             for ip, hits in ip_counts.items():
                 writer.writerow([ip, hits, ip_404_counts.get(ip, 0)])
         self._console.print(f"[success]Report exported to {path}[/success]")
