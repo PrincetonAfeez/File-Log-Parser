@@ -23,3 +23,11 @@ def test_ip_validation(tmp_path):
     parser = LogParser(str(p))
     parser.parse_line(p.read_text())
     assert parser.corrupted_lines == 1
+
+def test_security_alert_logic():
+    parser = LogParser("dummy.log")
+    # Simulate 51 hits of 404 from one IP
+    for _ in range(51):
+        parser.parse_line('1.2.3.4 - - [date] "GET /bad HTTP/1.1" 404 123')
+    
+    assert parser.ip_404_counts['1.2.3.4'] == 51
