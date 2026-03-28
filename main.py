@@ -1,19 +1,21 @@
 # main.py
 import click # For CLI argument handling
 from parser import LogParser
+import asyncio
 
 @click.command()
 @click.argument('logfile', type=click.Path(exists=True))
 @click.option('--threshold', default=50, help='404 threshold.')
 @click.option('--export', type=click.Choice(['json', 'csv']), help='Export format.')
 @click.option('--output', default='report', help='Output filename without extension.')
-def main(logfile, threshold, export):
-    """Enterprise Log File Parser."""
+def main(logfile, threshold, export, output):
     parser = LogParser(logfile)
-    parser.run(threshold=threshold)
+    
+    # Standard way to run async code from a synchronous CLI
+    asyncio.run(parser.run(threshold=threshold))
     
     if export:
-        parser.export_data(export)
+        parser.export_data(export, output)
 
 if __name__ == "__main__":
     main()
