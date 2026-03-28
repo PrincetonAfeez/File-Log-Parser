@@ -3,6 +3,14 @@ import re
 from collections import Counter
 from typing import Dict, List, Any
 
+# Enterprise-grade regex with named groups
+LOG_PATTERN = re.compile(
+    r'(?P<ip>\d{1,3}(?:\.\d{1,3}){3})'       # Matches IP
+    r'.*?\[(?P<timestamp>.*?)\] '            # Matches Timestamp
+    r'"(?P<method>\w+) (?P<path>.*?) HTTP.*?" ' # Matches Method & Path
+    r'(?P<status>\d{3})'                     # Matches Status Code
+)
+
 class LogParser:
     def __init__(self, filepath: str):
         self.filepath = filepath
