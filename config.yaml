@@ -1,0 +1,7 @@
+# config.yaml
+security:
+  threshold: 50
+  alert_level: "HIGH"
+parser:
+  ignore_extensions: [".css", ".js", ".jpg", ".png", ".ico"]
+  report_name: "enterprise_audit"
