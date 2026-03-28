@@ -37,8 +37,21 @@ class LogParser:
             pass
 
     def print_summary(self):
-        """Placeholder for reporting logic."""
-        print("Processing complete.")
+        print("\n--- Log Analysis Report ---")
+        print(f"HTTP 200: {self.status_counts['200']}")
+        print(f"HTTP 404: {self.status_counts['404']}")
+        print(f"HTTP 500: {self.status_counts['500']}")
+        
+        print("\nTop 3 IP Addresses:")
+        for ip, count in self.ip_counts.most_common(3):
+            print(f"{ip}: {count} hits")
+            
+        # Security Alert Logic
+        for ip, count in self.ip_counts.items():
+            # Basic check: if an IP has > 50 hits, check if many are 404s
+            # (Refining this logic will be a Phase 2 commit)
+            if count > 50:
+                print(f"!!! SECURITY ALERT: Potential Bot detected from {ip} !!!")
 
 
 #feat: add initial regex for IP and status code extraction
