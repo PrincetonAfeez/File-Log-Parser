@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Dict, List, Any
 from exceptions import InvalidLogFormatError
 import ipaddress
+from models import LogEntry
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -32,10 +33,29 @@ class LogParser:
 
     def parse_line(self, line: str):
         match = LOG_PATTERN.search(line)
-        if not match:
-            self.corrupted_lines += 1
-            # In a real app, you might log the specific line to a 'debug.log'
-            return
+        if match:
+            group = match.groupdict()
+            try:
+                # Validate IP first
+                ip_obj = ipaddress.ip_address(group['ip'])
+                
+                # Create structured entry
+                entry = LogEntry(
+                    ip=str(ip_obj),
+                    timestamp=group['timestamp'],
+                    method=group['method'],
+                    path=group['path'],
+                    status=int(group['status'])
+                )
+                
+                # Update counters using entry attributes
+                self.status_counts[str(entry.status)] += 1
+                self.ip_counts[entry.ip] += 1
+                if entry.status == 404:
+                    self.ip_404_counts[entry.ip] += 1
+                    
+            except (ValueError, KeyError):
+                self.corrupted_lines += 1
         
         data = match.groupdict()
         self.status_counts[data['status']] += 1
