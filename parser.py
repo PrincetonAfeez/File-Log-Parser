@@ -2,6 +2,7 @@
 import re
 from collections import Counter
 from typing import Dict, List, Any
+from exceptions import InvalidLogFormatError
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -16,6 +17,7 @@ class LogParser:
         self.filepath = filepath
         self.status_counts = Counter()
         self.ip_counts = Counter()
+        self.corrupted_lines = 0
         
     def run(self):
         try:
@@ -28,13 +30,14 @@ class LogParser:
 
     def parse_line(self, line: str):
         match = LOG_PATTERN.search(line)
-        if match:
-            data = match.groupdict()
-            self.status_counts[data['status']] += 1
-            self.ip_counts[data['ip']] += 1
-        else:
-            # We will handle "Data Cleansing" for failed matches in Phase 2
-            pass
+        if not match:
+            self.corrupted_lines += 1
+            # In a real app, you might log the specific line to a 'debug.log'
+            return
+        
+        data = match.groupdict()
+        self.status_counts[data['status']] += 1
+        self.ip_counts[data['ip']] += 1
 
     def print_summary(self):
         print("\n--- Log Analysis Report ---")
