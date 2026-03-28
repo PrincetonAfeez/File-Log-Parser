@@ -3,6 +3,7 @@ import re
 from collections import Counter
 from typing import Dict, List, Any
 from exceptions import InvalidLogFormatError
+import ipaddress
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -38,6 +39,12 @@ class LogParser:
         data = match.groupdict()
         self.status_counts[data['status']] += 1
         self.ip_counts[data['ip']] += 1
+        try:
+            ip_obj = ipaddress.ip_address(data['ip'])
+            self.ip_counts[str(ip_obj)] += 1
+            self.status_counts[data['status']] += 1
+        except ValueError:
+            self.corrupted_lines += 1
 
     def print_summary(self):
         print("\n--- Log Analysis Report ---")
