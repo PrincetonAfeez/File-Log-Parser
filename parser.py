@@ -12,7 +12,13 @@ import os
 from rich.progress import track
 import csv
 import yaml
+import logging
 
+logging.basicConfig(
+    filename='parser.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -87,6 +93,7 @@ class LogParser:
                     
             except (ValueError, KeyError):
                 self.corrupted_lines += 1
+                logging.warning(f"Malformed line detected: {line[:50]}...")
         
         data = match.groupdict()
         self.status_counts[data['status']] += 1
