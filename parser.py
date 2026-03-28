@@ -26,11 +26,16 @@ class LogParser:
     def run(self):
         try:
             with open(self.filepath, 'r') as file:
-                for line in file:
-                    self.parse_line(line.strip())
+                for line_num, line in enumerate(file, 1):
+                    try:
+                        self.parse_line(line.strip())
+                    except Exception as e:
+                        print(f"Unexpected error on line {line_num}: {e}")
+                        self.corrupted_lines += 1
             self.print_summary()
         except FileNotFoundError:
-            print(f"Error: File '{self.filepath}' not found.")
+            print(f"Error: {self.filepath} does not exist.")
+            
 
     def is_noise(self, entry: LogEntry) -> bool:
         """Filter out static assets or health checks."""
