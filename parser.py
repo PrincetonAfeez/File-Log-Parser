@@ -131,6 +131,7 @@ class LogParser:
                 for ip, hits in self.ip_counts.items():
                     writer.writerow([ip, hits, self.ip_404_counts.get(ip, 0)])
             self.console.print("[success]Report exported to ip_report.csv[/success]")
+            filename = f"{output_name}.{format_type}"
 
     def print_summary(self):
         table = Table(title="HTTP Status Distribution", show_header=True, header_style="bold magenta")

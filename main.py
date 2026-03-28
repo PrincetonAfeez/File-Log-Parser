@@ -6,6 +6,7 @@ from parser import LogParser
 @click.argument('logfile', type=click.Path(exists=True))
 @click.option('--threshold', default=50, help='404 threshold.')
 @click.option('--export', type=click.Choice(['json', 'csv']), help='Export format.')
+@click.option('--output', default='report', help='Output filename without extension.')
 def main(logfile, threshold, export):
     """Enterprise Log File Parser."""
     parser = LogParser(logfile)
