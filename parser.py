@@ -5,6 +5,8 @@ from typing import Dict, List, Any
 from exceptions import InvalidLogFormatError
 import ipaddress
 from models import LogEntry
+from rich.console import Console
+from rich.theme import Theme
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -14,8 +16,17 @@ LOG_PATTERN = re.compile(
     r'(?P<status>\d{3})'                     # Matches Status Code
 )
 
+# Custom theme for enterprise branding
+custom_theme = Theme({
+    "info": "cyan",
+    "warning": "yellow",
+    "danger": "bold red",
+    "success": "bold green"
+})
+
 class LogParser:
     def __init__(self, filepath: str):
+        self.console = Console(theme=custom_theme)
         self.filepath = filepath
         self.status_counts = Counter()
         self.ip_counts = Counter()
@@ -35,7 +46,7 @@ class LogParser:
             self.print_summary()
         except FileNotFoundError:
             print(f"Error: {self.filepath} does not exist.")
-            
+
 
     def is_noise(self, entry: LogEntry) -> bool:
         """Filter out static assets or health checks."""
