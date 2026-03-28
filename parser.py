@@ -21,6 +21,7 @@ class LogParser:
         self.ip_counts = Counter()
         self.corrupted_lines = 0
         self.ip_404_counts = Counter()
+        self.ignored_lines = 0
 
     def run(self):
         try:
@@ -30,6 +31,10 @@ class LogParser:
             self.print_summary()
         except FileNotFoundError:
             print(f"Error: File '{self.filepath}' not found.")
+
+    def is_noise(self, entry: LogEntry) -> bool:
+        """Filter out static assets or health checks."""
+        return entry.path.endswith(('.css', '.js', '.png', '.ico'))
 
     def parse_line(self, line: str):
         match = LOG_PATTERN.search(line)
@@ -48,6 +53,9 @@ class LogParser:
                     status=int(group['status'])
                 )
                 
+                if self.is_noise(entry):
+                    self.ignored_lines += 1
+                    return
                 # Update counters using entry attributes
                 self.status_counts[str(entry.status)] += 1
                 self.ip_counts[entry.ip] += 1
