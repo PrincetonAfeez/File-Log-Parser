@@ -10,6 +10,7 @@ from rich.theme import Theme
 from rich.table import Table
 import os
 from rich.progress import track
+import csv
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -122,7 +123,15 @@ class LogParser:
             with open("report.json", "w") as f:
                 json.dump(report, f, indent=4)
             self.console.print("[success]Report exported to report.json[/success]")
-            
+        
+        if format_type == 'csv':
+            with open("ip_report.csv", "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["IP Address", "Total Hits", "404 Errors"])
+                for ip, hits in self.ip_counts.items():
+                    writer.writerow([ip, hits, self.ip_404_counts.get(ip, 0)])
+            self.console.print("[success]Report exported to ip_report.csv[/success]")
+
     def print_summary(self):
         table = Table(title="HTTP Status Distribution", show_header=True, header_style="bold magenta")
         table.add_column("Status Code", style="dim")
