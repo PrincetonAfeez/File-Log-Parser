@@ -14,6 +14,8 @@ import csv
 import yaml
 import logging
 from datetime import datetime
+import asyncio
+import aiofiles
 
 logging.basicConfig(
     filename='parser.log',
@@ -49,18 +51,16 @@ class LogParser:
         with open("config.yaml", "r") as f:
             self.config = yaml.safe_load(f)
 
-   def run(self, threshold: int = 50):
-        self.console.print(f"[info]Starting Analysis on {self.filepath}...[/info]")
-        
-        # Open file once to get line count for the progress bar
-        with open(self.filepath, 'r') as f:
-            lines = f.readlines()
-
-        for line in track(lines, description="Processing logs..."):
+async def run(self, threshold: int = 50):
+    self.console.print("[info]Initiating Async Stream Analysis...[/info]")
+    
+    async with aiofiles.open(self.filepath, mode='r') as f:
+        async for line in f:
+            # We can now process lines in a non-blocking fashion
             self.parse_line(line.strip())
             
-        self.print_summary()
-        self.check_security(threshold)
+    self.print_summary()
+    self.check_security(threshold)
 
 
     def is_noise(self, entry: LogEntry) -> bool:
