@@ -19,7 +19,8 @@ class LogParser:
         self.status_counts = Counter()
         self.ip_counts = Counter()
         self.corrupted_lines = 0
-        
+        self.ip_404_counts = Counter()
+
     def run(self):
         try:
             with open(self.filepath, 'r') as file:
@@ -39,6 +40,8 @@ class LogParser:
         data = match.groupdict()
         self.status_counts[data['status']] += 1
         self.ip_counts[data['ip']] += 1
+        if data['status'] == '404':
+            self.ip_404_counts[data['ip']] += 1
         try:
             ip_obj = ipaddress.ip_address(data['ip'])
             self.ip_counts[str(ip_obj)] += 1
