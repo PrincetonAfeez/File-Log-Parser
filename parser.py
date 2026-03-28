@@ -7,6 +7,7 @@ import ipaddress
 from models import LogEntry
 from rich.console import Console
 from rich.theme import Theme
+from rich.table import Table
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -94,6 +95,14 @@ class LogParser:
             self.corrupted_lines += 1
 
     def print_summary(self):
+        table = Table(title="HTTP Status Distribution", show_header=True, header_style="bold magenta")
+        table.add_column("Status Code", style="dim")
+        table.add_column("Occurrences", justify="right")
+
+        for code, count in self.status_counts.items():
+            table.add_row(code, str(count))
+
+        self.console.print(table)
         print("\n--- Log Analysis Report ---")
         print(f"HTTP 200: {self.status_counts['200']}")
         print(f"HTTP 404: {self.status_counts['404']}")
