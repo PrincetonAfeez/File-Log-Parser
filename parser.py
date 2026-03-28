@@ -66,9 +66,15 @@ class LogParser:
             if count > 50:
                 print(f"!!! SECURITY ALERT: Potential Bot detected from {ip} !!!")
 
+        print("\n--- Integrity Report ---")
+        print(f"Lines Processed: {sum(self.status_counts.values()) + self.corrupted_lines}")
+        print(f"Malformed/Corrupted Lines: {self.corrupted_lines}")
+        
+        print("\n--- Security Alerts ---")
+        for ip, count in self.ip_404_counts.items():
+            if count > 50:
+                print(f"[ALERT] {ip} flagged for suspicious activity ({count} 404s)")
+    
 
-#feat: add initial regex for IP and status code extraction
 
-#feat: implement status code frequency counting
-
-#feat: implement IP hit tracking
+    
