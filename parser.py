@@ -96,6 +96,17 @@ class LogParser:
         except ValueError:
             self.corrupted_lines += 1
 
+    def check_security(self, threshold: int):
+        self.console.print("\n[bold]-- Security Audit --[/bold]")
+        found_threats = False
+        for ip, count in self.ip_404_counts.items():
+            if count > threshold:
+                self.console.print(f"[danger]ALERT:[/danger] {ip} exceeded 404 threshold with {count} errors!")
+                found_threats = True
+        
+        if not found_threats:
+            self.console.print("[success]No suspicious activity detected.[/success]")
+            
     def print_summary(self):
         table = Table(title="HTTP Status Distribution", show_header=True, header_style="bold magenta")
         table.add_column("Status Code", style="dim")
@@ -129,6 +140,7 @@ class LogParser:
         for ip, count in self.ip_404_counts.items():
             if count > 50:
                 print(f"[ALERT] {ip} flagged for suspicious activity ({count} 404s)")
+        
     
 
 
