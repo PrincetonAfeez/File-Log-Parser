@@ -8,6 +8,8 @@ from models import LogEntry
 from rich.console import Console
 from rich.theme import Theme
 from rich.table import Table
+import os
+from rich.progress import track
 
 # Enterprise-grade regex with named groups
 LOG_PATTERN = re.compile(
@@ -35,18 +37,18 @@ class LogParser:
         self.ip_404_counts = Counter()
         self.ignored_lines = 0
 
-    def run(self):
-        try:
-            with open(self.filepath, 'r') as file:
-                for line_num, line in enumerate(file, 1):
-                    try:
-                        self.parse_line(line.strip())
-                    except Exception as e:
-                        print(f"Unexpected error on line {line_num}: {e}")
-                        self.corrupted_lines += 1
-            self.print_summary()
-        except FileNotFoundError:
-            print(f"Error: {self.filepath} does not exist.")
+   def run(self, threshold: int = 50):
+        self.console.print(f"[info]Starting Analysis on {self.filepath}...[/info]")
+        
+        # Open file once to get line count for the progress bar
+        with open(self.filepath, 'r') as f:
+            lines = f.readlines()
+
+        for line in track(lines, description="Processing logs..."):
+            self.parse_line(line.strip())
+            
+        self.print_summary()
+        self.check_security(threshold)
 
 
     def is_noise(self, entry: LogEntry) -> bool:
